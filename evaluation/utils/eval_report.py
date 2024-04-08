@@ -6,37 +6,63 @@ import matplotlib.pyplot as plt
 
 import global_id_utils
 
-def unique_prediction_ids_and_labels(prediction_output, model_id2label) -> tuple[np.array, np.array, np.array, list[str]]:
+def make_evaluation_outputs(prediction_output, output_dir, model_id_to_global_id, model_id2label, dataset_id_to_global_id):
     """
-    Helper to extract (unique) predictions and their labels from the prediction output
-    Args:
-        prediction_output: Huggingface Trainer.predict output
-        model_id2label: Mapping from integer model ids to string labels
-    
-    Returns:
-        Tuple of
-        - predictions in model ids
-        - labels in model ids
-        - unique predictions in model ids
-        - unique labels in model labels
+    Runs all evaluations on the model's predictions, saving output in output_dir.
+    Evaluations are:
+        - Classification report for accuracy, recacll, f1 across all true classes
+        - Accuracy bar plot across true classes
+        - Confusion Matrices (Counts, normalized over true)
     """
-    # Logits to predictions, using the model's ids
     prediction_model_ids = np.argmax(prediction_output.predictions, axis=-1)
     label_model_ids = prediction_output.label_ids
-    
-    # prediction_global_ids = [model_id_to_global_id[id] for id in predictions_model_ids]
-    # label_global_ids = [model_id_to_global_id[id] for id in label_model_ids]
-    
-    unique_prediction_ids = np.unique(prediction_model_ids)
-    unique_prediction_labels = [model_id2label[id] for id in unique_prediction_ids]
-    
-    return prediction_model_ids, label_model_ids, unique_prediction_ids, unique_prediction_labels
 
+    prediction_global_ids = [model_id_to_global_id[id] for id in prediction_model_ids]
+    label_global_ids = [model_id_to_global_id[id] for id in label_model_ids]
 
-def create_and_save_visualizations(output_dir:str, label_model_ids, prediction_model_ids, model_id2label):
+    def model_id_to_global_name(model_id):
+        global_id = model_id_to_global_id[model_id]
+        lang = global_id_utils.global_id_to_lang(global_id)
+        name = lang.name
+        return name
+
+    unique_prediction_model_ids, unique_prediction_names = unique_ids_and_names_func(prediction_model_ids, model_id_to_global_name)
+    unique_label_model_ids, unique_label_names = unique_ids_and_names_func(label_model_ids, model_id_to_global_name)
+
+    _, report_text = save_report(output_dir, prediction_model_ids, label_model_ids, unique_label_model_ids, unique_label_names)
+    print(report_text)
+
     all_unique_ids = np.unique(np.concatenate((label_model_ids, prediction_model_ids)))
-    all_unique_names = [model_id2label[id] for id in all_unique_ids]
+    all_unique_names = list(map(model_id_to_global_name, all_unique_ids))
 
+    create_and_save_visualizations(output_dir, prediction_model_ids, label_model_ids, all_unique_ids, all_unique_names)
+
+    save_predictions(output_dir, prediction_model_ids, label_model_ids, prediction_global_ids, label_global_ids)
+
+def unique_ids_and_names(ids: list[int], id_to_name):
+    """
+    Args:
+        - ids: list/array of ids
+        - id_to_name: Mapping of integer ids to string names
+    """
+    unique_ids = np.unique(ids)
+    unique_names = [id_to_name[id] for id in unique_ids]
+    
+    return unique_ids, unique_names
+
+def unique_ids_and_names_func(ids: list[int], id_to_name):
+    """
+    Args:
+        - ids: list/array of ids
+        - id_to_name: Function mapping of integer ids to string names
+    """
+    unique_ids = np.unique(ids)
+    unique_names = list(map(id_to_name, unique_ids))
+    
+    return unique_ids, unique_names
+
+
+def create_and_save_visualizations(output_dir:str, prediction_model_ids, label_model_ids, all_unique_ids, all_unique_names):
     #################
     # Confusion matrix of counts
     #################
@@ -133,7 +159,7 @@ def create_and_save_visualizations(output_dir:str, label_model_ids, prediction_m
     fig.savefig(output_dir + "/confusion matrix normalized over true small font.svg")
     fig.show()
     
-def save_report(output_dir: str, label_model_ids, prediction_model_ids, unique_label_ids, unique_label_names):
+def save_report(output_dir: str, prediction_model_ids, label_model_ids, unique_label_ids, unique_label_names):
     classification_report_args = dict(
         y_true=label_model_ids,
         y_pred=prediction_model_ids,
@@ -152,9 +178,7 @@ def save_report(output_dir: str, label_model_ids, prediction_model_ids, unique_l
 
     return classification_report, classification_report_text
 
-def save_predictions(output_dir: str, prediction_model_ids, label_model_ids, model_id_to_global_id):
-    prediction_global_ids = [model_id_to_global_id[id] for id in prediction_model_ids]
-    label_global_ids = [model_id_to_global_id[id] for id in label_model_ids]
+def save_predictions(output_dir: str, prediction_model_ids, label_model_ids, prediction_global_ids, label_global_ids):
     results = {
         "predictions": prediction_global_ids,
         "labels": label_global_ids
