@@ -148,7 +148,7 @@ def save_report(output_dir: str, label_model_ids, prediction_model_ids, unique_l
         json.dump(classification_report, out_file)
     classification_report_text = sklearn.metrics.classification_report(**classification_report_args, output_dict=False)
     with open(output_dir + "/" + "classification_report.txt", "w") as out_file:
-        json.dump(classification_report_text, out_file)
+        out_file.write(classification_report_text)
 
     return classification_report, classification_report_text
 
